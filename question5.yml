@@ -1,0 +1,79 @@
+## https://github.com/WallaceWilliam
+# Run as follows:
+# ansible-playbook question5.yml -e "hostname=server" -e "ansible_user=root" -kK
+---
+- name:
+  gather_facts: false
+  hosts: "{{ hostname }}"
+#  become: yes
+  vars:
+    pkgs:
+    - nginx
+    - zsh
+    - wget
+    remote_file: "https://raw.githubusercontent.com/WallaceWilliam/gitinsky-com/main/under.html"
+
+  tasks:
+
+  - name: install packages
+    become: true
+    package:
+      name: "{{ item }}"
+      state: present
+    with_items: "{{ pkgs }}"
+
+  - name: copy file
+    become: true
+    get_url:
+      url: "{{ remote_file }}"
+      dest: "/var/www/index.html"
+      mode: '0644'
+
+  - name: nginx config copy
+    become: true
+    copy:
+      src: default
+      dest: /etc/nginx/sites-available/default
+      mode: '0644'
+    register: conf
+
+  - name: restart nginx
+    become: true
+    service: name=nginx state=restarted
+    when: conf.changed
+
+  - name: sysctl set
+    become: true
+    sysctl:
+      reload: yes
+      name: "{{ item.name }}"
+      value: "{{ item.value }}"
+      state: present
+    loop:
+      - {name: "fs.file-max", value: 1204000}
+      - {name: "net.core.somaxconn", value: 65535}
+    
+  - name: Generate an OpenSSH keypair with the default values (4096 bits, rsa)
+    become: yes
+    delegate_to: localhost
+#    local_action: command stat "{{ item }}" || ssh-keygen -q -t rsa -f "{{ item }}" -C "" -N ""
+    shell: stat "{{ item }}" || ssh-keygen -q -t rsa -f "{{ item }}" -C "" -N ""
+    loop:
+      - id_rsa1
+      - id_rsa2
+    
+#  - name: Generate an OpenSSH keypair with the default values (4096 bits, rsa)
+#    become: yes
+#    openssh_keypair:
+#      path: id_rsa1
+
+  - name: Set up multiple authorized keys
+    become: true
+    authorized_key:
+      user: root
+      state: present
+      key: '{{ item }}'
+#      exclusive: true
+    with_file:
+      - id_rsa1.pub
+      - id_rsa2.pub

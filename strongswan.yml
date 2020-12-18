@@ -1,0 +1,151 @@
+## https://github.com/WallaceWilliam
+# Run as follows:
+# ansible-playbook strongswan.yml -e "hostname=server" -e "ansible_user=root" -kK
+---
+- name: strongswan
+  gather_facts: false
+  hosts: "{{ hostname }}"
+#  become: yes
+  vars:
+    strongswan_pkgs: 
+    - strongswan 
+    - strongswan-pki
+    - libcharon-extra-plugins
+    strongswan_config_file:  /etc/ipsec.conf
+    strongswan_secrets_file: /etc/ipsec.secrets
+    strongswan_server_ip: 1.1.1.1
+    strongswan_ipsec: /etc/ipsec.d/
+    strongswan_ca_key: ca-key.pem
+    strongswan_ca_crt: ca-cert.pem
+    strongswan_server_key: server-key.pem
+    strongswan_server_crt: server-cert.pem
+    strongswan_config_setup:
+      uniqueids: 'yes'
+      charonstart: 'yes'
+      charondebug: '"ike 1, knl 1, cfg 0"'
+
+    strongswan_conn_default:
+      type: tunnel
+
+    strongswan_conns:
+      ikev2-vpn:
+        auto: add
+        compress: 'no'
+        type: tunnel
+        keyexchange: ikev2
+        fragmentation: 'yes'
+        forceencaps: 'yes'
+        dpdaction: clear
+        dpddelay: 300s
+        rekey: 'no'
+        left: '%any'
+        leftid: "{{ strongswan_server_ip }}"
+        leftcert: "{{ strongswan_server_crt }}"
+        leftsendcert: always
+        leftsubnet: 0.0.0.0/0
+        right: '%any'
+        rightid: '%any'
+        rightauth: eap-mschapv2
+        rightsourceip: 10.10.10.0/24
+        rightdns: 8.8.8.8,8.8.4.4
+        rightsendcert: never
+        eap_identity: '%identity'
+        ike: "chacha20poly1305-sha512-curve25519-prfsha512,aes256gcm16-sha384-prfsha384-ecp384,aes256-sha1-modp1024,aes128-sha1-modp1024,3des-sha1-modp1024!"
+        esp: "chacha20poly1305-sha512,aes256gcm16-ecp384,aes256-sha256,aes256-sha1,3des-sha1!"
+
+    strongswan_secrets: {}
+#    - left: test
+#      right: 1.2.3.4
+#      type: EAP
+#      credentials: '"1"'
+
+    strongswan_secrets_num: "{{ range(1, 50 + 1, 1)|list }}"
+
+  tasks:
+
+  - name: strongswan install
+    become: true
+    package:
+      name: "{{ item }}"
+      state: present
+    with_items: "{{ strongswan_pkgs }}"
+
+  - name: Create центр сертификации ca-key.pem
+    become: true
+    shell: ipsec pki --gen --type rsa --size 4096 --outform pem > "{{ strongswan_ca_key }}"
+    args:
+      chdir: "{{ strongswan_ipsec }}/private/"
+      creates: "{{ strongswan_ca_key }}"
+
+  - name: Create центр сертификации ca-cert.pem
+    become: true
+    shell: ipsec pki --self --ca --lifetime 3650 --in "{{ strongswan_ipsec }}/private/{{ strongswan_ca_key }}" \
+               --type rsa --dn "CN=VPN root CA" --outform pem > "{{ strongswan_ca_crt }}"
+    args:
+      chdir: "{{ strongswan_ipsec }}/cacerts/"
+      creates: "{{ strongswan_ca_crt }}"
+
+  - name: read ca-cert.pem
+    command: cat "{{ strongswan_ipsec }}/cacerts/{{ strongswan_ca_crt }}"
+    register: remote_file
+
+  - name: show ca-cert.pem
+    debug:
+      msg: "{{ remote_file['stdout'] }}"
+
+  - name: Create server-key.pem
+    become: true
+    shell: ipsec pki --gen --type rsa --size 4096 --outform pem > "{{ strongswan_server_key }}"
+    args:
+      chdir: "{{ strongswan_ipsec }}/private/"
+      creates: "{{ strongswan_server_key }}"
+
+  - name: Create server-cert.pem
+    become: true
+    shell: ipsec pki --pub --in "{{ strongswan_ipsec }}/private/{{ strongswan_server_key }}" --type rsa \
+           | ipsec pki --issue --lifetime 1825 \
+                --cacert "{{ strongswan_ipsec }}/cacerts/{{ strongswan_ca_crt }}" \
+                --cakey "{{ strongswan_ipsec }}/private/{{ strongswan_ca_key }}" \
+                --dn "CN={{ strongswan_server_ip }}" --san "{{ strongswan_server_ip }}" \
+                --flag serverAuth --flag ikeIntermediate --outform pem > "{{ strongswan_server_crt }}"
+    args:
+      chdir: "{{ strongswan_ipsec }}/certs/"
+      creates: "{{ strongswan_server_crt }}"
+
+  - name: strongswan ipsec.conf
+    become: true
+    template:
+      src: strongswan-ipsec.conf.j2
+      dest: "{{strongswan_config_file}}"
+      owner: "root"
+      group: "root"
+      mode: "0644"
+    notify: restart strongswan
+
+  - name: strongswan ipsec.secrets
+    become: true
+    template:
+      src: strongswan-ipsec.secrets.j2
+      dest: "{{strongswan_secrets_file}}"
+      owner: "root"
+      group: "root"
+      mode: "0640"
+    notify: restart strongswan
+
+  - name: Настройка брандмауэра
+    become: true
+    ufw:
+      rule: allow
+      proto: udp
+      comment: MANAGED BY ANSIBLE
+      port: "{{ item }}"
+    loop:
+      - "500"
+      - "4500"
+
+  handlers:
+  - name: restart strongswan
+    become: true
+    service:
+      name: strongswan
+      state: restarted
