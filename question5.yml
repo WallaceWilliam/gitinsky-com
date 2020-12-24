@@ -12,6 +12,13 @@
     - zsh
     - wget
     remote_file: "https://raw.githubusercontent.com/WallaceWilliam/gitinsky-com/main/under.html"
+    keystodeploy:
+    - name: Petra Meier
+      sshkey: "{{ lookup('file', 'id_rsa1.pub') }}"
+#ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCjHZjpDSFI9F1aegUIYA1xna5ZRu+HU+0uTK8xy5UON5Z+OBws/XftCtKkgAgpwCyGT/2XLjDIiRr6fd+8xqwW2h/Mvj0n5GksmVd3mqdzQbY/SOezSIydvtDcRwL2gYiSzHrDjjLVkc8h+skaFHJsMwUD+H7jCoJVARsu4O54eZ6OV3KitypMs/57z2AX2aJ4UhAIGiP2cbaZDJH/lfqmv8C6CCV1xEo9n44ZcqwfcN5arPYn5hE24b+lEaHB8e8Lknz10DDzjg6P6lsf3tkXEHQpS86+Vbm76ej00cYw6TI/a31EGktgRRlAY0bxEycUS1CPzB8QWItGj8s5ZAF9p4GfoD+tb+1u2kdOHsvrZToktQR7mzhCt/VNYIdZc9YUyBe0v0xIHT+62qW5YD8EY6SwKMEX79vW/ThqT2Lhx6bx064rnC6Pc9eSR7cMAejU5PhZK5y+VsctDaAcj3gmd5jFgHjyz9cPnNlv8+WWDpbZiekPwMOL36Ebit3yZJc=
+    - name: Horst Lehmann
+      sshkey: "{{ lookup('file', 'id_rsa2.pub') }}"
+#ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQD2sg3yei6zqZ1vYpZ0Qs0QibFcLKbhOoYeyoNxkSIz91UAEUnIBMPIk0uBC0H+s3K7AZGOfUYBE2HyeT61mdp+Gvy4ZbzyoDe0zZjsaPwP6K08T5wsocDTPXfVu4yKDp4YwJdQM1GbDCkWgI/t6HPkG/LHP6MW+ND/Gdf4C7nbvq6E7ixOiJQgaENB8BPELl6OpwlMzFIoJWPpz7OZ7iGxFbPxMWGex6TcVh4YDCGg9pPILsLVSEJdBHv+gqYJvXtdV5Yd6mTspfACgqv9i9C8hJAdWGyaQTPrYLwqWFCPL5lk+J5vW2hEigzMaxjKnSa/YZ2+0UDKsdznhB7cJdCWujhTwdhKToRPLSbqycjP+TUj8sRLLDl15PxdtfP6yqZw8i6t8Hba2Xf/ANXaYhLqgD3ZNRO9ml/1MOJIWJTdiQu4Qiwv39Pc47FmsZAPp1I/tU381l8n0rodHUhuayQtyKLoyYsf0MNAOoExlACq8lQwExzh5X4C4wONI6reebE=
 
   tasks:
 
@@ -72,8 +79,9 @@
     authorized_key:
       user: root
       state: present
-      key: '{{ item }}'
-#      exclusive: true
-    with_file:
-      - id_rsa1.pub
-      - id_rsa2.pub
+      exclusive: true
+      key: "{{ keystodeploy|map(attribute='sshkey')|join('\n') }}"
+#      key: '{{ item }}'
+#    with_file:
+#      - id_rsa1.pub
+#      - id_rsa2.pub
